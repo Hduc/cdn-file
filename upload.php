@@ -257,7 +257,8 @@ try {
             'size'          => $fileSize,
             'mime_type'     => $detectedMime,
             'original_name' => basename($originalName),
-            'gdrive_synced' => (bool)$existingDb
+            'storage'       => !empty($existingDb['gdrive_file_id']) ? 'google_drive' : 'local_server',
+            'gdrive_synced' => !empty($existingDb['gdrive_file_id'])
         ]);
     }
 
@@ -289,17 +290,6 @@ try {
     $gdriveError = null;
     $isDriveEnabled = GoogleDriveManager::isEnabled();
 
-    if (defined('GDRIVE_REQUIRED') && GDRIVE_REQUIRED && !$isDriveEnabled) {
-        @unlink($destination);
-        $loadErrors = GoogleDriveManager::getLoadErrors();
-        $detail = !empty($loadErrors) ? implode(' | ', $loadErrors) : 'Thư mục credentials/ chưa có file JSON hợp lệ.';
-        jsonResponse([
-            'success' => false,
-            'error'   => 'Lỗi: Chế độ ưu tiên Google Drive đang bật, nhưng hệ thống không nạp được tài khoản Google Drive. Chi tiết: ' . $detail
-        ], 500);
-    }
-
-
     if ($isDriveEnabled) {
         try {
             $gdriveInfo = GoogleDriveManager::upload($destination, $fileName, $detectedMime);
@@ -328,28 +318,60 @@ try {
                 ], 400);
             }
 
+            // Fallback: Save directly on local server disk
+            Database::save(
+                $hash,
+                $fileName,
+                $detectedMime,
+                $fileSize,
+                'local',
+                ''
+            );
         }
+    } else {
+        // No Google Drive connected -> Save directly on server
+        if (defined('GDRIVE_REQUIRED') && GDRIVE_REQUIRED) {
+            @unlink($destination);
+            $loadErrors = GoogleDriveManager::getLoadErrors();
+            $detail = !empty($loadErrors) ? implode(' | ', $loadErrors) : 'Thư mục credentials/ chưa có file JSON hợp lệ.';
+            jsonResponse([
+                'success' => false,
+                'error'   => 'Lỗi: Chế độ ưu tiên Google Drive đang bật, nhưng hệ thống không nạp được tài khoản Google Drive. Chi tiết: ' . $detail
+            ], 500);
+        }
+
+        // Save local record into database
+        Database::save(
+            $hash,
+            $fileName,
+            $detectedMime,
+            $fileSize,
+            'local',
+            ''
+        );
     }
 
-
     // 9. Return response
+    $storageType = ($gdriveInfo !== null) ? 'google_drive' : 'local_server';
     jsonResponse([
-        'success'       => true,
-        'status'        => 'uploaded',
-        'deduplicated'  => false,
-        'file_name'     => $fileName,
-        'hash'          => $hash,
-        'url'           => $publicUrl,
-        'clean_url'     => $cleanUrl,
-        'direct_url'    => $directUrl,
-        'size'          => $fileSize,
-        'mime_type'     => $detectedMime,
-        'original_name' => basename($originalName),
+        'success'           => true,
+        'status'            => 'uploaded',
+        'storage'           => $storageType,
+        'deduplicated'      => false,
+        'file_name'         => $fileName,
+        'hash'              => $hash,
+        'url'               => $publicUrl,
+        'clean_url'         => $cleanUrl,
+        'direct_url'        => $directUrl,
+        'size'              => $fileSize,
+        'mime_type'         => $detectedMime,
+        'original_name'     => basename($originalName),
         'converted_to_webp' => $convertedToWebp,
-        'saved_bytes'   => $convertedToWebp ? max(0, $origFileSize - $fileSize) : 0,
-        'gdrive_synced' => ($gdriveInfo !== null),
-        'gdrive_account'=> $gdriveInfo['account_id'] ?? null,
-        'uploaded_at'   => time()
+        'saved_bytes'       => $convertedToWebp ? max(0, $origFileSize - $fileSize) : 0,
+        'gdrive_synced'     => ($gdriveInfo !== null),
+        'gdrive_account'    => $gdriveInfo['account_id'] ?? null,
+        'gdrive_error'      => $gdriveError,
+        'uploaded_at'       => time()
     ], 201);
 
 

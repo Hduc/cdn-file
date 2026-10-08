@@ -589,8 +589,12 @@ curl -X POST "<?= htmlspecialchars($baseUrl) ?>/upload.php" \
             item.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2 shadow-lg';
 
             const badge = res.deduplicated 
-                ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">TRÙNG NỘI DUNG (Deduplicated)</span>'
+                ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">TRÙNG NỘI DUNG</span>'
                 : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">FILE MỚI</span>';
+
+            const storageBadge = res.gdrive_synced
+                ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">☁️ GOOGLE DRIVE</span>'
+                : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">💾 LOCAL SERVER</span>';
 
             const webpBadge = res.converted_to_webp 
                 ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">✨ AUTO WEBP</span>' 
@@ -607,8 +611,9 @@ curl -X POST "<?= htmlspecialchars($baseUrl) ?>/upload.php" \
                         ${previewHtml}
                         <div class="overflow-hidden">
                             <span class="text-xs font-semibold text-white truncate block max-w-xs">${originalName}</span>
-                            <div class="flex items-center gap-2 mt-0.5">
+                            <div class="flex items-center gap-2 mt-0.5 flex-wrap">
                                 ${badge}
+                                ${storageBadge}
                                 ${webpBadge}
                                 <span class="text-[11px] text-slate-400">${(res.size / 1024).toFixed(1)} KB</span>
                             </div>

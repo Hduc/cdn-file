@@ -64,8 +64,8 @@ class Database
         string $fileName,
         string $mimeType,
         int $size,
-        string $accountId,
-        string $gdriveFileId
+        string $accountId = 'local',
+        string $gdriveFileId = ''
     ): bool {
         $stmt = self::getConnection()->prepare("
             INSERT OR REPLACE INTO files (hash, file_name, mime_type, size, account_id, gdrive_file_id, created_at)

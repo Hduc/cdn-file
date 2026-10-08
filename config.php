@@ -74,13 +74,13 @@ define('USE_CLEAN_URL', true);
 // false: Stream to Google Drive then delete from hosting (0% disk used on hosting)
 define('GDRIVE_KEEP_LOCAL_CACHE', true);
 
-// Ưu tiên & Bắt buộc Google Drive:
-// true: Bắt buộc upload lên Google Drive thành công. Nếu lỗi hoặc chưa cấu hình -> Báo lỗi ngay lập tức!
-// false: Upload hosting trước, Drive đồng bộ phụ dưới nền.
-define('GDRIVE_REQUIRED', true);
+// Chế độ lưu trữ Google Drive:
+// true: Bắt buộc Google Drive (nếu chưa kết nối hoặc lỗi Drive -> báo lỗi)
+// false: Linh hoạt (Tự động fallback về lưu trên chính server/hosting nếu chưa kết nối Drive)
+define('GDRIVE_REQUIRED', false);
 
-// Folder ID mặc định trên Google Drive (Thư mục id)
-define('GDRIVE_DEFAULT_FOLDER_ID', '');
+// Folder ID mặc định trên Google Drive
+define('GDRIVE_DEFAULT_FOLDER_ID', '15n4k5hfyjhjymkHbNizRh179UzeGYEQH');
 
 // -------------------------------------------------------------
 // 4. TỰ ĐỘNG CHUYỂN ĐỔI ẢNH SANG WEBP (AUTO WEBP CONVERSION)
