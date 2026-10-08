@@ -20,9 +20,26 @@ define('CDN_API_KEY', getenv('CDN_API_KEY') ?: 'cdn_secret_key_change_me_123456'
 
 // Blocked file extensions (never allow executable scripts)
 define('BLOCKED_EXTENSIONS', [
-    'php', 'php3', 'php4', 'php5', 'php7', 'phtml', 'phar',
-    'sh', 'bash', 'py', 'pl', 'cgi', 'exe', 'bat', 'cmd',
-    'htaccess', 'htpasswd', 'env', 'ini', 'conf'
+    'php',
+    'php3',
+    'php4',
+    'php5',
+    'php7',
+    'phtml',
+    'phar',
+    'sh',
+    'bash',
+    'py',
+    'pl',
+    'cgi',
+    'exe',
+    'bat',
+    'cmd',
+    'htaccess',
+    'htpasswd',
+    'env',
+    'ini',
+    'conf'
 ]);
 
 // -------------------------------------------------------------
@@ -57,6 +74,29 @@ define('USE_CLEAN_URL', true);
 // false: Stream to Google Drive then delete from hosting (0% disk used on hosting)
 define('GDRIVE_KEEP_LOCAL_CACHE', true);
 
+// Ưu tiên & Bắt buộc Google Drive:
+// true: Bắt buộc upload lên Google Drive thành công. Nếu lỗi hoặc chưa cấu hình -> Báo lỗi ngay lập tức!
+// false: Upload hosting trước, Drive đồng bộ phụ dưới nền.
+define('GDRIVE_REQUIRED', true);
+
+// Folder ID mặc định trên Google Drive (Thư mục id)
+define('GDRIVE_DEFAULT_FOLDER_ID', '');
+
+// -------------------------------------------------------------
+// 4. TỰ ĐỘNG CHUYỂN ĐỔI ẢNH SANG WEBP (AUTO WEBP CONVERSION)
+// -------------------------------------------------------------
+// Tự động nén và chuyển các định dạng ảnh (JPEG, PNG, GIF, BMP) sang WebP
+define('AUTO_CONVERT_WEBP', true);
+
+// Chất lượng nén WebP (1 - 100). Mức 82 cho chất lượng mắt thường khó phân biệt nhưng dung lượng giảm 60-80%
+define('WEBP_QUALITY', 82);
+
+// true: Chỉ dùng WebP nếu dung lượng nhỏ hơn file gốc. false: Luôn đổi sang WebP chuẩn hóa
+define('WEBP_ONLY_IF_SMALLER', false);
+
+
+
+
 // -------------------------------------------------------------
 // 4. HELPER FUNCTIONS
 // -------------------------------------------------------------
@@ -64,7 +104,8 @@ define('GDRIVE_KEEP_LOCAL_CACHE', true);
 /**
  * Send JSON response and exit
  */
-function jsonResponse(array $data, int $statusCode = 200): void {
+function jsonResponse(array $data, int $statusCode = 200): void
+{
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate');
@@ -75,7 +116,8 @@ function jsonResponse(array $data, int $statusCode = 200): void {
 /**
  * Authenticate incoming request via Bearer token, X-API-Key, or POST api_key
  */
-function authenticateRequest(): bool {
+function authenticateRequest(): bool
+{
     $apiKey = CDN_API_KEY;
     if (empty($apiKey)) {
         return false;
@@ -113,7 +155,8 @@ function authenticateRequest(): bool {
 /**
  * Get base URL of current host
  */
-function getBaseUrl(): string {
+function getBaseUrl(): string
+{
     if (!empty(CDN_BASE_URL)) {
         return rtrim(CDN_BASE_URL, '/');
     }
@@ -124,7 +167,7 @@ function getBaseUrl(): string {
 
     $protocol = $isHttps ? 'https://' : 'http://';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    
+
     // Determine script directory relative to document root
     $scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
     if ($scriptDir === '/') {
@@ -138,7 +181,8 @@ function getBaseUrl(): string {
  * Get sharded relative directory path for a hash
  * Example: sha1 "a1b2c3d4..." -> "a1/b2"
  */
-function getShardPath(string $hash): string {
+function getShardPath(string $hash): string
+{
     $parts = [];
     for ($i = 0; $i < SHARD_DEPTH; $i++) {
         $parts[] = substr($hash, $i * 2, 2);
@@ -149,16 +193,17 @@ function getShardPath(string $hash): string {
 /**
  * Sanitize and extract safe file extension
  */
-function getSafeExtension(string $filename, string $detectedMime = ''): string {
+function getSafeExtension(string $filename, string $detectedMime = ''): string
+{
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
     // Fallback to mime type extension if empty
     if (empty($ext) && !empty($detectedMime)) {
         $mimeMap = [
             'image/jpeg' => 'jpg',
-            'image/png'  => 'png',
+            'image/png' => 'png',
             'image/webp' => 'webp',
-            'image/gif'  => 'gif',
+            'image/gif' => 'gif',
             'image/svg+xml' => 'svg',
             'application/pdf' => 'pdf',
             'video/mp4' => 'mp4',
@@ -174,3 +219,79 @@ function getSafeExtension(string $filename, string $detectedMime = ''): string {
 
     return preg_replace('/[^a-z0-9]/', '', $ext);
 }
+
+/**
+ * Convert an image file (JPEG, PNG, GIF, BMP) to WebP format with alpha channel preservation
+ *
+ * @param string $sourcePath Path to image file
+ * @param string $mimeType Detected MIME type
+ * @param int $quality Compression quality (1 - 100)
+ * @return string|null Path to generated WebP file on success, null on failure
+ */
+function convertImageToWebP(string $sourcePath, string $mimeType, int $quality = 82): ?string
+{
+    if (!function_exists('imagewebp')) {
+        return null;
+    }
+
+    $image = null;
+    switch ($mimeType) {
+        case 'image/jpeg':
+            if (function_exists('imagecreatefromjpeg')) {
+                $image = @imagecreatefromjpeg($sourcePath);
+            }
+            break;
+
+        case 'image/png':
+            if (function_exists('imagecreatefrompng')) {
+                $image = @imagecreatefrompng($sourcePath);
+                if ($image) {
+                    imagepalettetotruecolor($image);
+                    imagealphablending($image, false);
+                    imagesavealpha($image, true);
+                }
+            }
+            break;
+
+        case 'image/gif':
+            if (function_exists('imagecreatefromgif')) {
+                $image = @imagecreatefromgif($sourcePath);
+                if ($image) {
+                    imagepalettetotruecolor($image);
+                }
+            }
+            break;
+
+        case 'image/bmp':
+        case 'image/x-ms-bmp':
+            if (function_exists('imagecreatefrombmp')) {
+                $image = @imagecreatefrombmp($sourcePath);
+            }
+            break;
+
+        case 'image/webp':
+            // Already WebP
+            return $sourcePath;
+
+        default:
+            return null;
+    }
+
+    if (!$image) {
+        return null;
+    }
+
+    $webpTemp = $sourcePath . '.webp';
+    $saved = @imagewebp($image, $webpTemp, max(1, min(100, $quality)));
+    imagedestroy($image);
+
+    if ($saved && file_exists($webpTemp) && filesize($webpTemp) > 0) {
+        return $webpTemp;
+    }
+
+    if (file_exists($webpTemp)) {
+        @unlink($webpTemp);
+    }
+    return null;
+}
+

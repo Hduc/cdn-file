@@ -180,8 +180,45 @@ try {
     $detectedMime = finfo_file($finfo, $tempFilePath) ?: 'application/octet-stream';
     finfo_close($finfo);
 
+    $originalMime = $detectedMime;
+    $convertedToWebp = false;
+    $origFileSize = $fileSize;
+
+    // 3.1. Auto convert images to WebP if enabled
+    if (
+        defined('AUTO_CONVERT_WEBP') && AUTO_CONVERT_WEBP
+        && strpos($detectedMime, 'image/') === 0
+        && $detectedMime !== 'image/svg+xml'
+        && $detectedMime !== 'image/webp'
+    ) {
+        $quality = defined('WEBP_QUALITY') ? WEBP_QUALITY : 82;
+        $webpPath = convertImageToWebP($tempFilePath, $detectedMime, $quality);
+
+        if ($webpPath !== null && file_exists($webpPath)) {
+            $webpSize = (int)filesize($webpPath);
+            $shouldKeepWebp = true;
+
+            if (defined('WEBP_ONLY_IF_SMALLER') && WEBP_ONLY_IF_SMALLER && $webpSize >= $origFileSize) {
+                $shouldKeepWebp = false;
+                @unlink($webpPath);
+            }
+
+            if ($shouldKeepWebp) {
+                if ($isChunked || isset($streamTemp)) {
+                    @unlink($tempFilePath);
+                }
+                $tempFilePath = $webpPath;
+                $fileSize = $webpSize;
+                $detectedMime = 'image/webp';
+                $originalName = pathinfo($originalName, PATHINFO_FILENAME) . '.webp';
+                $convertedToWebp = true;
+            }
+        }
+    }
+
     // 4. Calculate Content Hash (CAS)
     $hash = hash_file(HASH_ALGO, $tempFilePath);
+
     if ($hash === false) {
         throw new RuntimeException('Failed to compute file hash');
     }
@@ -249,7 +286,21 @@ try {
 
     // 8. Sync to Google Drive pool if enabled
     $gdriveInfo = null;
-    if (GoogleDriveManager::isEnabled()) {
+    $gdriveError = null;
+    $isDriveEnabled = GoogleDriveManager::isEnabled();
+
+    if (defined('GDRIVE_REQUIRED') && GDRIVE_REQUIRED && !$isDriveEnabled) {
+        @unlink($destination);
+        $loadErrors = GoogleDriveManager::getLoadErrors();
+        $detail = !empty($loadErrors) ? implode(' | ', $loadErrors) : 'Thư mục credentials/ chưa có file JSON hợp lệ.';
+        jsonResponse([
+            'success' => false,
+            'error'   => 'Lỗi: Chế độ ưu tiên Google Drive đang bật, nhưng hệ thống không nạp được tài khoản Google Drive. Chi tiết: ' . $detail
+        ], 500);
+    }
+
+
+    if ($isDriveEnabled) {
         try {
             $gdriveInfo = GoogleDriveManager::upload($destination, $fileName, $detectedMime);
             Database::save(
@@ -266,10 +317,19 @@ try {
                 @unlink($destination);
             }
         } catch (Throwable $ge) {
-            error_log('Google Drive sync error: ' . $ge->getMessage());
-            // Fallback: file is still safe on local storage!
+            $gdriveError = $ge->getMessage();
+            error_log('Google Drive sync error: ' . $gdriveError);
+
+            if (defined('GDRIVE_REQUIRED') && GDRIVE_REQUIRED) {
+                @unlink($destination);
+                jsonResponse([
+                    'success' => false,
+                    'error'   => 'Lỗi upload lên Google Drive: ' . $gdriveError
+                ], 502);
+            }
         }
     }
+
 
     // 9. Return response
     jsonResponse([
@@ -284,10 +344,13 @@ try {
         'size'          => $fileSize,
         'mime_type'     => $detectedMime,
         'original_name' => basename($originalName),
+        'converted_to_webp' => $convertedToWebp,
+        'saved_bytes'   => $convertedToWebp ? max(0, $origFileSize - $fileSize) : 0,
         'gdrive_synced' => ($gdriveInfo !== null),
         'gdrive_account'=> $gdriveInfo['account_id'] ?? null,
         'uploaded_at'   => time()
     ], 201);
+
 
 } catch (Throwable $e) {
     if (!empty($tempFilePath) && ($isChunked || isset($streamTemp)) && file_exists($tempFilePath)) {

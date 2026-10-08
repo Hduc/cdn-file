@@ -39,8 +39,10 @@ $status = [
     'google_drive' => [
         'enabled'       => GoogleDriveManager::isEnabled(),
         'account_count' => count($gdriveAccounts),
-        'accounts'      => $gdriveAccounts
+        'accounts'      => $gdriveAccounts,
+        'errors'        => GoogleDriveManager::getLoadErrors()
     ]
+
 ];
 
 if ($isAuthenticated) {

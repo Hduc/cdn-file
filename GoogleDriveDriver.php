@@ -41,8 +41,9 @@ class GoogleDriveDriver
 
     public function getFolderId(): ?string
     {
-        return $this->credentials['folder_id'] ?? null;
+        return $this->credentials['folder_id'] ?? (defined('GDRIVE_DEFAULT_FOLDER_ID') ? GDRIVE_DEFAULT_FOLDER_ID : null);
     }
+
 
     /**
      * Get OAuth2 Access Token (cached with expiration check)
@@ -93,7 +94,7 @@ class GoogleDriveDriver
         $jwt = "{$dataToSign}." . $this->base64UrlEncode($signature);
 
         // Exchange JWT for access token
-        $ch = curl_init($this->credentials['token_uri'] ?? 'https://oauth2.googleapis.com/token');
+        $ch = $this->initCurl($this->credentials['token_uri'] ?? 'https://oauth2.googleapis.com/token');
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => http_build_query([
@@ -151,15 +152,19 @@ class GoogleDriveDriver
 
         $token = $this->getAccessToken();
         $targetFolder = $folderId ?: $this->getFolderId();
+        if (empty($targetFolder) || $targetFolder === 'PASTE_YOUR_SHARED_GOOGLE_DRIVE_FOLDER_ID_HERE') {
+            throw new RuntimeException("File credentials/{$this->accountId}.json chưa có 'folder_id'! Vui lòng mở file và thêm 'folder_id' của thư mục Google Drive (ví dụ cdn-aigiup).");
+        }
+
         $fileSize = filesize($localFilePath);
 
         // Step 1: Initiate Resumable Session
-        $metadata = ['name' => $targetFileName];
-        if (!empty($targetFolder)) {
-            $metadata['parents'] = [$targetFolder];
-        }
+        $metadata = [
+            'name'    => $targetFileName,
+            'parents' => [$targetFolder]
+        ];
 
-        $ch = curl_init('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true');
+        $ch = $this->initCurl('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true');
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => json_encode($metadata),
@@ -195,7 +200,7 @@ class GoogleDriveDriver
             throw new RuntimeException("Cannot open local file for streaming: {$localFilePath}");
         }
 
-        $ch = curl_init($uploadUrl);
+        $ch = $this->initCurl($uploadUrl);
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST  => 'PUT',
             CURLOPT_UPLOAD         => true,
@@ -233,7 +238,7 @@ class GoogleDriveDriver
     public function deleteFile(string $driveFileId): bool
     {
         $token = $this->getAccessToken();
-        $ch = curl_init("https://www.googleapis.com/drive/v3/files/{$driveFileId}?supportsAllDrives=true");
+        $ch = $this->initCurl("https://www.googleapis.com/drive/v3/files/{$driveFileId}?supportsAllDrives=true");
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST  => 'DELETE',
             CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $token],
@@ -264,7 +269,7 @@ class GoogleDriveDriver
             $headers[] = 'Range: ' . $rangeHeader;
         }
 
-        $ch = curl_init($url);
+        $ch = $this->initCurl($url);
         curl_setopt_array($ch, [
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_RETURNTRANSFER => false, // Output directly to output buffer
@@ -304,4 +309,21 @@ class GoogleDriveDriver
     {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
+
+    /**
+     * Initialize cURL handle with automatic SSL fallback for environments missing CA bundle
+     *
+     * @return \CurlHandle|resource
+     */
+    private function initCurl(string $url)
+    {
+        $ch = curl_init($url);
+        $caFile = ini_get('curl.cainfo') ?: ini_get('openssl.cafile');
+        if (empty($caFile) || !file_exists($caFile)) {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+        }
+        return $ch;
+    }
 }
+
