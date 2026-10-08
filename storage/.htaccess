@@ -1,0 +1,55 @@
+# ==============================================================
+# PHP CDN STORAGE - STORAGE FOLDER .HTACCESS
+# Static Delivery & Lockdown for Direct CDN Edge Caching
+# ==============================================================
+
+# 1. DISABLE SCRIPT EXECUTION COMPLETELY (CRITICAL SECURITY)
+Options -Indexes -ExecCGI
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+# Force text/plain for any script extensions if accessed
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phar .cgi .pl .py .sh .bash
+AddType text/plain .php .phtml .php3 .phar .sh .py
+
+# 2. AGGRESSIVE CDN CACHING (IMMUTABLE CONTENT-ADDRESSABLE STORAGE)
+# Since filenames are hash-based, their content will NEVER change.
+# Cache for 1 year (31,536,000 seconds) with immutable flag.
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=31536000, immutable"
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+    Header set Timing-Allow-Origin "*"
+    Header set Accept-Ranges "bytes"
+
+    # Strip cookies to maximize CDN edge caching efficiency
+    Header unset Set-Cookie
+    Header unset Cookie
+    Header unset Pragma
+</IfModule>
+
+# 3. EXPIRES HEADERS FOR OLDER PROXIES
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresDefault "access plus 1 year"
+</IfModule>
+
+# 4. MIME TYPE CORRECTIONS
+<IfModule mod_mime.c>
+    AddType image/webp .webp
+    AddType image/avif .avif
+    AddType image/svg+xml .svg
+    AddType video/mp4 .mp4
+    AddType video/webm .webm
+    AddType audio/mpeg .mp3
+    AddType audio/ogg .ogg
+    AddType font/woff2 .woff2
+    AddType font/woff .woff
+</IfModule>

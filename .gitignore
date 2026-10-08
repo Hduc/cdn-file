@@ -1,0 +1,7 @@
+.DS_Store
+tmp/*
+!tmp/.gitkeep
+storage/*
+!storage/.gitkeep
+!storage/.htaccess
+.env

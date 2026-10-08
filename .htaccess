@@ -1,0 +1,67 @@
+# ==============================================================
+# PHP CDN STORAGE - ROOT .HTACCESS
+# Optimized for Shared Hosting (Apache / LiteSpeed) & Cloudflare
+# ==============================================================
+
+Options -Indexes
+Options +FollowSymLinks
+
+# Security: Block sensitive files and folders
+<FilesMatch "^(config\.php|\.env|\.git|composer\..*|package\..*)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect tmp folder
+RewriteRule ^tmp/ - [F,L]
+
+# --------------------------------------------------------------
+# PHP Limits Optimization (If allowed by host)
+# --------------------------------------------------------------
+<IfModule mod_php.c>
+    php_value upload_max_filesize 512M
+    php_value post_max_size 512M
+    php_value memory_limit 512M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+</IfModule>
+
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 512M
+    php_value post_max_size 512M
+    php_value memory_limit 512M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+</IfModule>
+
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 512M
+    php_value post_max_size 512M
+    php_value memory_limit 512M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+</IfModule>
+
+# --------------------------------------------------------------
+# URL Rewriting for Clean CDN URLs
+# Maps: /f/a1b2c3d4...jpg -> /storage/a1/b2/a1b2c3d4...jpg
+# --------------------------------------------------------------
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Clean URL Rewrite for 2-level sharded files:
+    # Captures:
+    #   $1: full filename (e.g., 9a0364b9...jpg)
+    #   $2: first 2 chars of hash (e.g., 9a)
+    #   $3: next 2 chars of hash (e.g., 03)
+    RewriteRule ^f/(([a-f0-9]{2})([a-f0-9]{2})[a-f0-9]+(\.[a-zA-Z0-9]+)?)$ storage/$2/$3/$1 [L,NC]
+</IfModule>
+
+# --------------------------------------------------------------
+# Global CORS & Header Rules
+# --------------------------------------------------------------
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Timing-Allow-Origin "*"
+</IfModule>
