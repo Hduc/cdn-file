@@ -12,8 +12,8 @@ Options +FollowSymLinks
     Deny from all
 </FilesMatch>
 
-# Protect tmp folder
-RewriteRule ^tmp/ - [F,L]
+# Protect sensitive directories
+RewriteRule ^(tmp|credentials|data)/ - [F,L]
 
 # --------------------------------------------------------------
 # PHP Limits Optimization (If allowed by host)
@@ -51,11 +51,14 @@ RewriteRule ^tmp/ - [F,L]
     RewriteBase /
 
     # Clean URL Rewrite for 2-level sharded files:
-    # Captures:
-    #   $1: full filename (e.g., 9a0364b9...jpg)
-    #   $2: first 2 chars of hash (e.g., 9a)
-    #   $3: next 2 chars of hash (e.g., 03)
+    # 1. If physical file exists in storage, serve directly (0% PHP load):
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{DOCUMENT_ROOT}/storage/$2/$3/$1 -f
     RewriteRule ^f/(([a-f0-9]{2})([a-f0-9]{2})[a-f0-9]+(\.[a-zA-Z0-9]+)?)$ storage/$2/$3/$1 [L,NC]
+
+    # 2. If file is on Google Drive (not cached on disk), stream via PHP:
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^f/(([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]+)(\.([a-zA-Z0-9]+))?)$ stream.php?hash=$2$3$4&ext=$6 [L,QSA,NC]
 </IfModule>
 
 # --------------------------------------------------------------

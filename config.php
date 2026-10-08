@@ -52,6 +52,11 @@ define('CDN_BASE_URL', getenv('CDN_BASE_URL') ?: '');
 //                 false -> /storage/ab/cd/{hash}.{ext}
 define('USE_CLEAN_URL', true);
 
+// Keep a copy on hosting storage for lightning-fast origin response?
+// true: Keep file on hosting disk cache + sync to Google Drive
+// false: Stream to Google Drive then delete from hosting (0% disk used on hosting)
+define('GDRIVE_KEEP_LOCAL_CACHE', true);
+
 // -------------------------------------------------------------
 // 4. HELPER FUNCTIONS
 // -------------------------------------------------------------

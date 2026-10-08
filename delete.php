@@ -6,6 +6,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/GoogleDriveManager.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     header('Access-Control-Allow-Origin: *');
@@ -70,6 +72,17 @@ if (is_dir($shardDir)) {
     }
 }
 
+// Check SQLite and Google Drive
+$dbRecord = Database::findByHash($targetHash);
+$gdriveDeleted = false;
+if ($dbRecord) {
+    if (!empty($dbRecord['account_id']) && !empty($dbRecord['gdrive_file_id'])) {
+        $gdriveDeleted = GoogleDriveManager::delete($dbRecord['account_id'], $dbRecord['gdrive_file_id']);
+    }
+    Database::delete($targetHash);
+    $deleted = true;
+}
+
 if (!$deleted) {
     jsonResponse(['success' => false, 'error' => 'File not found or already deleted.'], 404);
 }
@@ -79,7 +92,8 @@ if (!$deleted) {
 @rmdir(dirname($shardDir));
 
 jsonResponse([
-    'success' => true,
-    'message' => 'File(s) deleted successfully.',
-    'deleted' => $deletedFiles
+    'success'        => true,
+    'message'        => 'File(s) deleted successfully.',
+    'deleted'        => $deletedFiles,
+    'gdrive_deleted' => $gdriveDeleted
 ]);

@@ -11,6 +11,8 @@ declare(strict_types=1);
 @ini_set('max_execution_time', '0');
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/GoogleDriveManager.php';
 
 // Allow CORS preflight
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -196,9 +198,12 @@ try {
     $cleanUrl = $baseUrl . '/f/' . $fileName;
     $publicUrl = USE_CLEAN_URL ? $cleanUrl : $directUrl;
 
-    // 6. Check for deduplication
-    if (file_exists($destination) && filesize($destination) === $fileSize) {
-        // File already exists with identical hash and size
+    // 6. Check for deduplication (Local disk or SQLite database)
+    $existingDb = Database::findByHash($hash);
+    $existsOnDisk = file_exists($destination) && filesize($destination) === $fileSize;
+
+    if ($existsOnDisk || $existingDb) {
+        // File already exists with identical hash
         if ($isChunked || isset($streamTemp)) {
             @unlink($tempFilePath);
         }
@@ -214,18 +219,19 @@ try {
             'direct_url'    => $directUrl,
             'size'          => $fileSize,
             'mime_type'     => $detectedMime,
-            'original_name' => basename($originalName)
+            'original_name' => basename($originalName),
+            'gdrive_synced' => (bool)$existingDb
         ]);
     }
 
-    // 7. Store new file
+    // 7. Store new file locally
     if (!is_dir($shardDir)) {
         if (!mkdir($shardDir, 0755, true) && !is_dir($shardDir)) {
             throw new RuntimeException('Failed to create storage directory: ' . $shardDir);
         }
     }
 
-    // Move from temp location
+    // Move from temp location to local destination
     if (is_uploaded_file($tempFilePath)) {
         if (!move_uploaded_file($tempFilePath, $destination)) {
             throw new RuntimeException('Failed to move uploaded file');
@@ -241,7 +247,31 @@ try {
 
     @chmod($destination, 0644);
 
-    // 8. Return response
+    // 8. Sync to Google Drive pool if enabled
+    $gdriveInfo = null;
+    if (GoogleDriveManager::isEnabled()) {
+        try {
+            $gdriveInfo = GoogleDriveManager::upload($destination, $fileName, $detectedMime);
+            Database::save(
+                $hash,
+                $fileName,
+                $detectedMime,
+                $fileSize,
+                $gdriveInfo['account_id'],
+                $gdriveInfo['gdrive_file_id']
+            );
+
+            // If hosting storage should not keep local cache, delete to free 100% hosting disk
+            if (!GDRIVE_KEEP_LOCAL_CACHE) {
+                @unlink($destination);
+            }
+        } catch (Throwable $ge) {
+            error_log('Google Drive sync error: ' . $ge->getMessage());
+            // Fallback: file is still safe on local storage!
+        }
+    }
+
+    // 9. Return response
     jsonResponse([
         'success'       => true,
         'status'        => 'uploaded',
@@ -254,6 +284,8 @@ try {
         'size'          => $fileSize,
         'mime_type'     => $detectedMime,
         'original_name' => basename($originalName),
+        'gdrive_synced' => ($gdriveInfo !== null),
+        'gdrive_account'=> $gdriveInfo['account_id'] ?? null,
         'uploaded_at'   => time()
     ], 201);
 

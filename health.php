@@ -6,6 +6,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/GoogleDriveManager.php';
 
 // Public status or auth-protected detail
 $isAuthenticated = authenticateRequest();
@@ -16,18 +18,28 @@ $tmpWritable = is_writable(TMP_PATH);
 $diskFree = @disk_free_space(STORAGE_PATH);
 $diskTotal = @disk_total_space(STORAGE_PATH);
 
+$dbStats = Database::getStats();
+$gdriveAccounts = GoogleDriveManager::getAccountsList();
+
 $status = [
     'success' => true,
     'status'  => 'healthy',
     'timestamp' => time(),
     'service' => 'PHP CDN Storage Server',
-    'version' => '1.0.0',
+    'version' => '1.1.0',
     'storage' => [
         'writable'      => $storageWritable,
         'tmp_writable'  => $tmpWritable,
         'free_bytes'    => $diskFree !== false ? $diskFree : null,
         'free_human'    => $diskFree !== false ? round($diskFree / (1024 * 1024 * 1024), 2) . ' GB' : 'N/A',
-        'total_human'   => $diskTotal !== false ? round($diskTotal / (1024 * 1024 * 1024), 2) . ' GB' : 'N/A'
+        'total_human'   => $diskTotal !== false ? round($diskTotal / (1024 * 1024 * 1024), 2) . ' GB' : 'N/A',
+        'total_files_tracked' => $dbStats['total_files'],
+        'total_size_tracked'  => round($dbStats['total_size'] / (1024 * 1024), 2) . ' MB'
+    ],
+    'google_drive' => [
+        'enabled'       => GoogleDriveManager::isEnabled(),
+        'account_count' => count($gdriveAccounts),
+        'accounts'      => $gdriveAccounts
     ]
 ];
 

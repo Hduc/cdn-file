@@ -4,4 +4,11 @@ tmp/*
 storage/*
 !storage/.gitkeep
 !storage/.htaccess
+data/*
+!data/.gitkeep
+!data/.htaccess
+credentials/*
+!credentials/.gitkeep
+!credentials/.htaccess
+!credentials/account_sample.json
 .env
