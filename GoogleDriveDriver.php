@@ -1,8 +1,9 @@
 <?php
 /**
- * PHP CDN Storage - Google Drive Service Account Driver
- * Pure PHP implementation of Google OAuth2 RS256 JWT & Drive v3 API
- * Zero composer dependencies.
+ * PHP CDN Storage - Google Drive Personal Account OAuth2 Driver
+ * Pure PHP implementation of Google OAuth2 Refresh Token exchange & Drive v3 API
+ * Tailored for Personal Google Drive Accounts (15GB / Google One)
+ * Zero external dependencies.
  */
 
 declare(strict_types=1);
@@ -20,13 +21,19 @@ class GoogleDriveDriver
         }
 
         $json = json_decode((string)file_get_contents($credentialFilePath), true);
-        if (!is_array($json) || empty($json['client_email']) || empty($json['private_key'])) {
-            throw new InvalidArgumentException("Invalid Google Service Account JSON: {$credentialFilePath}");
+        if (
+            !is_array($json) ||
+            empty($json['client_id']) ||
+            empty($json['client_secret']) ||
+            empty($json['refresh_token'])
+        ) {
+            throw new InvalidArgumentException("File cấu hình [{$credentialFilePath}] không hợp lệ. Cần chứa client_id, client_secret, refresh_token của tài khoản Google cá nhân.");
         }
 
         $this->credentials = $json;
         $this->accountId   = basename($credentialFilePath, '.json');
-        $this->tokenFile   = (__DIR__ . '/tmp') . '/gtoken_' . md5($json['client_email']) . '.json';
+        $tokenIdentifier   = $json['user_email'] ?? $json['client_id'];
+        $this->tokenFile   = (__DIR__ . '/tmp') . '/gtoken_' . md5($tokenIdentifier) . '.json';
     }
 
     public function getAccountId(): string
@@ -36,17 +43,16 @@ class GoogleDriveDriver
 
     public function getClientEmail(): string
     {
-        return $this->credentials['client_email'] ?? '';
+        return $this->credentials['user_email'] ?? $this->credentials['client_id'] ?? 'Google Personal Account';
     }
 
     public function getFolderId(): ?string
     {
-        return $this->credentials['folder_id'] ?? (defined('GDRIVE_DEFAULT_FOLDER_ID') ? GDRIVE_DEFAULT_FOLDER_ID : null);
+        return $this->credentials['folder_id'] ?? (defined('GDRIVE_DEFAULT_FOLDER_ID') && GDRIVE_DEFAULT_FOLDER_ID !== '' ? GDRIVE_DEFAULT_FOLDER_ID : null);
     }
 
-
     /**
-     * Get OAuth2 Access Token (cached with expiration check)
+     * Get valid OAuth2 Access Token (cached with expiration check)
      */
     public function getAccessToken(): string
     {
@@ -59,47 +65,24 @@ class GoogleDriveDriver
             }
         }
 
-        $token = $this->fetchNewAccessToken();
-        return $token;
+        return $this->refreshOAuthToken();
     }
 
     /**
-     * Generate RS256 JWT and exchange with Google for access token
+     * Exchange OAuth2 Refresh Token for fresh Access Token from Google
      */
-    private function fetchNewAccessToken(): string
+    private function refreshOAuthToken(): string
     {
-        $now = time();
-        $jwtHeader = $this->base64UrlEncode((string)json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
-        $jwtClaim = $this->base64UrlEncode((string)json_encode([
-            'iss'   => $this->credentials['client_email'],
-            'scope' => 'https://www.googleapis.com/auth/drive',
-            'aud'   => $this->credentials['token_uri'] ?? 'https://oauth2.googleapis.com/token',
-            'exp'   => $now + 3600,
-            'iat'   => $now
-        ]));
+        $tokenEndpoint = $this->credentials['token_uri'] ?? 'https://oauth2.googleapis.com/token';
+        $ch = $this->initCurl($tokenEndpoint);
 
-        $dataToSign = "{$jwtHeader}.{$jwtClaim}";
-        $signature = '';
-
-        $privateKey = openssl_pkey_get_private($this->credentials['private_key']);
-        if (!$privateKey) {
-            throw new RuntimeException("Failed to parse private key: " . openssl_error_string());
-        }
-
-        $success = openssl_sign($dataToSign, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-        if (!$success) {
-            throw new RuntimeException("Failed to sign JWT with OpenSSL: " . openssl_error_string());
-        }
-
-        $jwt = "{$dataToSign}." . $this->base64UrlEncode($signature);
-
-        // Exchange JWT for access token
-        $ch = $this->initCurl($this->credentials['token_uri'] ?? 'https://oauth2.googleapis.com/token');
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => http_build_query([
-                'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                'assertion'  => $jwt
+                'client_id'     => $this->credentials['client_id'],
+                'client_secret' => $this->credentials['client_secret'],
+                'refresh_token' => $this->credentials['refresh_token'],
+                'grant_type'    => 'refresh_token'
             ]),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 30
@@ -111,13 +94,13 @@ class GoogleDriveDriver
         curl_close($ch);
 
         if ($res === false) {
-            throw new RuntimeException("Failed to exchange JWT for Google access token: {$err}");
+            throw new RuntimeException("Lỗi kết nối OAuth2 tới Google: {$err}");
         }
 
         $tokenData = json_decode((string)$res, true);
         if ($httpCode !== 200 || empty($tokenData['access_token'])) {
             $msg = $tokenData['error_description'] ?? $tokenData['error'] ?? $res;
-            throw new RuntimeException("Google OAuth2 token error ({$httpCode}): {$msg}");
+            throw new RuntimeException("Google OAuth2 refresh token error ({$httpCode}): {$msg}");
         }
 
         $accessToken = $tokenData['access_token'];
@@ -129,7 +112,7 @@ class GoogleDriveDriver
 
         file_put_contents($this->tokenFile, json_encode([
             'access_token' => $accessToken,
-            'expires_at'   => $now + $expiresIn
+            'expires_at'   => time() + $expiresIn
         ]));
 
         return $accessToken;
@@ -152,8 +135,8 @@ class GoogleDriveDriver
 
         $token = $this->getAccessToken();
         $targetFolder = $folderId ?: $this->getFolderId();
-        if (empty($targetFolder) || $targetFolder === 'PASTE_YOUR_SHARED_GOOGLE_DRIVE_FOLDER_ID_HERE') {
-            throw new RuntimeException("File credentials/{$this->accountId}.json chưa có 'folder_id'! Vui lòng mở file và thêm 'folder_id' của thư mục Google Drive (ví dụ cdn-aigiup).");
+        if (empty($targetFolder)) {
+            throw new RuntimeException("Tài khoản [{$this->accountId}] chưa được cấu hình 'folder_id'! Vui lòng cấu hình ID của thư mục Google Drive (ví dụ cdn-aigiup).");
         }
 
         $fileSize = filesize($localFilePath);
@@ -274,7 +257,6 @@ class GoogleDriveDriver
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_RETURNTRANSFER => false, // Output directly to output buffer
             CURLOPT_HEADERFUNCTION => function ($ch, $headerLine) {
-                // Forward content length, content range, content type from Google Drive
                 $lower = strtolower($headerLine);
                 if (
                     strpos($lower, 'content-type:') === 0 ||
@@ -305,11 +287,6 @@ class GoogleDriveDriver
         }
     }
 
-    private function base64UrlEncode(string $data): string
-    {
-        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
-    }
-
     /**
      * Initialize cURL handle with automatic SSL fallback for environments missing CA bundle
      *
@@ -326,4 +303,3 @@ class GoogleDriveDriver
         return $ch;
     }
 }
-

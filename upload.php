@@ -325,8 +325,9 @@ try {
                 jsonResponse([
                     'success' => false,
                     'error'   => 'Lỗi upload lên Google Drive: ' . $gdriveError
-                ], 502);
+                ], 400);
             }
+
         }
     }
 

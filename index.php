@@ -144,7 +144,7 @@ $baseUrl = getBaseUrl();
                     </div>
                     <h3 class="text-lg font-bold text-white">Google Drive Multi-Account Pool</h3>
                     <p class="mt-3 text-sm text-slate-400 leading-relaxed">
-                        Kết nối không giới hạn tài khoản Google Drive 5TB qua Service Account độc lập. Phân bổ lưu trữ thông minh, che giấu ID file và link gốc đằng sau domain CDN.
+                        Hợp nhất nhiều tài khoản Google Drive cá nhân (15GB/tài khoản) qua OAuth 2.0 Pool. Tự động cân bằng tải, bảo mật tuyệt đối, che giấu ID file và link gốc đằng sau domain CDN.
                     </p>
                 </div>
 

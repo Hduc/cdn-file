@@ -19,7 +19,7 @@ class GoogleDriveManager
     }
 
     /**
-     * Discover all registered Service Accounts in credentials/
+     * Discover all registered Personal Google Drive Accounts in credentials/
      */
     public static function getDrivers(): array
     {
@@ -37,7 +37,7 @@ class GoogleDriveManager
 
         $files = glob($credDir . '/*.json');
         if ($files === false || empty($files)) {
-            self::$loadErrors[] = "Không tìm thấy bất kỳ file *.json nào trong: {$credDir}";
+            self::$loadErrors[] = "Không tìm thấy file cấu hình tài khoản (*.json) nào trong: {$credDir}";
             return self::$drivers;
         }
 
@@ -59,7 +59,7 @@ class GoogleDriveManager
         }
 
         if ($realAccountCount === 0) {
-            self::$loadErrors[] = "Thư mục credentials/ chỉ có file mẫu account_sample.json. Chưa có file key cấu hình thật (ví dụ aigiup-cdn-*.json).";
+            self::$loadErrors[] = "Thư mục credentials/ chỉ có file mẫu account_sample.json. Vui lòng kết nối tài khoản Google qua oauth_setup.php để kích hoạt Pool lưu trữ.";
         }
 
         return self::$drivers;
