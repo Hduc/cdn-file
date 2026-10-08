@@ -27,6 +27,9 @@ if (isset($_GET['code'])) {
     $clientId = $_SESSION['oauth_client_id'] ?? '';
     $clientSecret = $_SESSION['oauth_client_secret'] ?? '';
     $targetFolderId = $_SESSION['oauth_folder_id'] ?? $folderIdDefault;
+    if (!empty($_SESSION['oauth_redirect_uri'])) {
+        $redirectUri = (string)$_SESSION['oauth_redirect_uri'];
+    }
 
     if (empty($clientId) || empty($clientSecret)) {
         $statusMessage = 'Lỗi phiên làm việc: Thiếu Client ID hoặc Client Secret. Vui lòng thử lại từ bước 1.';
@@ -92,7 +95,7 @@ if (isset($_GET['code'])) {
             $statusMessage = "Đã ủy quyền thành công tài khoản [{$userEmail}] vào Pool lưu trữ! File cấu hình đã được tạo tự động tại credentials/account_{$safeEmail}.json.";
             
             // Clear temporary session
-            unset($_SESSION['oauth_client_id'], $_SESSION['oauth_client_secret'], $_SESSION['oauth_folder_id']);
+            unset($_SESSION['oauth_client_id'], $_SESSION['oauth_client_secret'], $_SESSION['oauth_folder_id'], $_SESSION['oauth_redirect_uri']);
         } else {
             $err = $tokenData['error_description'] ?? $tokenData['error'] ?? 'Không lấy được refresh_token từ Google.';
 
@@ -108,6 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_id'], $_POST['
     $clientId = trim((string)$_POST['client_id']);
     $clientSecret = trim((string)$_POST['client_secret']);
     $folderId = trim((string)($_POST['folder_id'] ?? $folderIdDefault));
+    $customUri = trim((string)($_POST['redirect_uri'] ?? ''));
+    if (!empty($customUri)) {
+        $redirectUri = $customUri;
+    }
 
     if (empty($clientId) || empty($clientSecret)) {
         $statusMessage = 'Vui lòng điền đầy đủ Client ID và Client Secret!';
@@ -115,6 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_id'], $_POST['
         $_SESSION['oauth_client_id'] = $clientId;
         $_SESSION['oauth_client_secret'] = $clientSecret;
         $_SESSION['oauth_folder_id'] = $folderId;
+        $_SESSION['oauth_redirect_uri'] = $redirectUri;
 
         // Redirect to Google Consent Screen
         $scope = urlencode('https://www.googleapis.com/auth/drive');
@@ -257,6 +265,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_id'], $_POST['
                     <label class="block text-xs font-semibold text-slate-300 mb-1.5">Client Secret</label>
                     <input type="password" name="client_secret" required placeholder="GOCSPX-xxxxxxxxxxxxxx" 
                         class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono transition">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                        <span>Authorized Redirect URI</span>
+                        <span class="text-[11px] text-amber-400 font-normal">⚠️ Phải khớp chính xác với Google Cloud</span>
+                    </label>
+                    <input type="text" name="redirect_uri" value="<?= htmlspecialchars($redirectUri) ?>" 
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-cyan-400 focus:outline-none focus:border-blue-500 font-mono transition">
+                    <p class="text-[11px] text-slate-500 mt-1">Copy đúng dòng này dán vào mục <strong>Authorized redirect URIs</strong> của OAuth client trên Google Cloud.</p>
                 </div>
 
                 <div>

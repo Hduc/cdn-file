@@ -157,16 +157,24 @@ function authenticateRequest(): bool
  */
 function getBaseUrl(): string
 {
-    if (!empty(CDN_BASE_URL)) {
+    if (defined('CDN_BASE_URL') && !empty(CDN_BASE_URL)) {
         return rtrim(CDN_BASE_URL, '/');
     }
 
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-        || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+        || (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
+        || (isset($_SERVER['HTTP_CF_VISITOR']) && strpos((string)$_SERVER['HTTP_CF_VISITOR'], '"https"') !== false)
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+    // Auto-assume HTTPS for production domains behind CDN/Cloudflare
+    if (!$isHttps && $host !== 'localhost' && !str_starts_with($host, '127.0.0.1')) {
+        $isHttps = true;
+    }
 
     $protocol = $isHttps ? 'https://' : 'http://';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 
     // Determine script directory relative to document root
     $scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
